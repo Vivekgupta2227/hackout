@@ -7,6 +7,7 @@ from collections import namedtuple
 from email.mime.text import MIMEText
 import errno
 import httplib2
+import logging
 import os
 
 from apiclient import discovery
@@ -14,6 +15,11 @@ import oauth2client
 from oauth2client import client
 from oauth2client import tools
 import yaml
+
+
+logging.basicConfig()
+logger = logging.getLogger('hackout')
+logger.setLevel(logging.INFO)
 
 
 def main():
@@ -67,13 +73,13 @@ class CampaignSender(object):
 
     def send(self, campaign_emails):
         '''Send a list of CampaignEmails.'''
-        log('Sending {} emails.', len(campaign_emails))
+        logger.info('Sending %i emails.', len(campaign_emails))
 
         self._email_client.create_label('Outreach')
         for campaign_email in campaign_emails:
             self._send_campaign_email(campaign_email)
 
-        log('Done.')
+        logger.info('Done.')
 
     def _send_campaign_email(self, campaign_email):
         label_id = self._email_client.create_label(
@@ -82,12 +88,12 @@ class CampaignSender(object):
         already_sent = self._email_client.has_sent(campaign_email.email.to,
                                                    label_id)
         if already_sent:
-            log('Campaign "{}" was already sent to {}; skipping',
-                campaign_email.campaign,
-                campaign_email.email.to)
+            logger.info('Campaign "%s" was already sent to %s; skipping',
+                        campaign_email.campaign,
+                        campaign_email.email.to)
         else:
-            log('Sending "{}" to {}', campaign_email.campaign,
-                campaign_email.email.to)
+            logger.info('Sending "%s" to %s', campaign_email.campaign,
+                        campaign_email.email.to)
             message_id = self._email_client.send_email(campaign_email.email)
             self._email_client.add_label(message_id, label_id)
 
@@ -215,7 +221,7 @@ def get_credentials(args):
         flow = client.flow_from_clientsecrets(CLIENT_SECRET_FILE, SCOPES)
         flow.user_agent = APPLICATION_NAME
         credentials = tools.run_flow(flow, store, args)
-        log('Storing credentials to {}', credential_path)
+        logger.info('Storing credentials to %s', credential_path)
     return credentials
 
 
@@ -227,10 +233,6 @@ def mkdirp(path):
         if exc.errno != errno.EEXIST:
             raise
 
-
-def log(message, *args, **kwargs):
-    '''Log a message to stdout.'''
-    print(message.format(*args, **kwargs))
 
 if __name__ == '__main__':
     main()

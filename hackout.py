@@ -181,7 +181,8 @@ def load_campaign_from_file(path):
                 email=render_email_template(
                     template,
                     from_=data['from'],
-                    **target
+                    to=target['to'],
+                    **target['params']
                 )
             ) for target in data['targets']
         ]

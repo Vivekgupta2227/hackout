@@ -2,12 +2,9 @@
 from __future__ import print_function
 
 import argparse
-import base64
 from collections import namedtuple
-from email.mime.text import MIMEText
 import errno
 import httplib2
-import logging
 import os
 
 from apiclient import discovery
@@ -16,10 +13,12 @@ from oauth2client import client
 from oauth2client import tools
 import yaml
 
+from campaign import CampaignSender
+import common
+from gmail import GMailClient
 
-logging.basicConfig()
-logger = logging.getLogger('hackout')
-logger.setLevel(logging.INFO)
+
+logger = common.logger
 
 
 def main():
@@ -63,107 +62,6 @@ def send(args):
     gmail_client = GMailClient(service)
     campaign_sender = CampaignSender(gmail_client)
     campaign_sender.send(campaign)
-
-
-class CampaignSender(object):
-    '''An outreach campaign sender.'''
-
-    def __init__(self, email_client):
-        self._email_client = email_client
-
-    def send(self, campaign_emails):
-        '''Send a list of CampaignEmails.'''
-        logger.info('Sending %i emails.', len(campaign_emails))
-
-        self._email_client.create_label('Outreach')
-        for campaign_email in campaign_emails:
-            self._send_campaign_email(campaign_email)
-
-        logger.info('Done.')
-
-    def _send_campaign_email(self, campaign_email):
-        label_id = self._email_client.create_label(
-            'Outreach/{}'.format(campaign_email.campaign)
-        )
-        already_sent = self._email_client.has_sent(campaign_email.email.to,
-                                                   label_id)
-        if already_sent:
-            logger.info('Campaign "%s" was already sent to %s; skipping',
-                        campaign_email.campaign,
-                        campaign_email.email.to)
-        else:
-            logger.info('Sending "%s" to %s', campaign_email.campaign,
-                        campaign_email.email.to)
-            message_id = self._email_client.send_email(campaign_email.email)
-            self._email_client.add_label(message_id, label_id)
-
-
-class GMailClient(object):
-    '''A GMail client class.'''
-
-    def __init__(self, service):
-        self._service = service
-
-    def create_label(self, name):
-        '''Return the label ID. Create the label if it doesn't exist.'''
-        labels = self._labels().list(userId='me').execute().get('labels', [])
-        for label in labels:
-            if label['name'] == name:
-                return label['id']
-        return self._labels().create(
-            userId='me',
-            body={'name': name}
-        ).execute()['id']
-
-    def has_sent(self, to, label_id):
-        '''Return True if an email with the label was sent to the recipient.'''
-        return bool(self._messages().list(
-            userId='me',
-            labelIds=[label_id],
-            q='to:{}'.format(to)
-        ).execute().get('messages', []))
-
-    def send_email(self, email):
-        '''Send the email and return its ID.'''
-        return self._messages().send(
-            userId='me',
-            body=self.email_to_gmail_message(email)
-        ).execute()['id']
-
-    def add_label(self, message_id, label_id):
-        '''Attach a label to a message.'''
-        self._messages().modify(
-            userId='me',
-            id=message_id,
-            body={'addLabelIds': [label_id]}
-        ).execute()
-
-    def _labels(self):
-        return self._service.users().labels()
-
-    def _messages(self):
-        return self._service.users().messages()
-
-    @staticmethod
-    def email_to_mime_text(email):
-        '''Convert Email to MIMEText.'''
-        mime_text = MIMEText(email.content)
-        mime_text['from'] = email.from_
-        mime_text['to'] = email.to
-        mime_text['subject'] = email.subject
-        return mime_text
-
-    @staticmethod
-    def mime_text_to_gmail_message(mime_text):
-        '''Convert MIMEText to a GMail API message.'''
-        return {'raw': base64.urlsafe_b64encode(mime_text.as_string())}
-
-    @staticmethod
-    def email_to_gmail_message(email):
-        '''Convert Email to a GMail API message.'''
-        return GMailClient.mime_text_to_gmail_message(
-            GMailClient.email_to_mime_text(email)
-        )
 
 
 Template = namedtuple('Template', 'subject content')
